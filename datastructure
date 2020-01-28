@@ -1,0 +1,16 @@
+#if !defined(UNIXDATASTRUCTURE_H)
+#define UNIXDATASTRUCTURE_H
+
+typedef struct Unix {
+  char *name;
+  enum { A_FILE, DIRECTORY } type;
+  struct Unix *parent;
+  struct Unix *child; /*pointer to first child in all of its children*/
+  struct Unix *next;
+  struct Unix *current; /*current directory*/
+  struct Unix *root; /*root directory*/
+} Unix;
+
+
+
+#endif
