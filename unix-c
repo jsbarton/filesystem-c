@@ -1,0 +1,453 @@
+/* This program creates a dynamically linked data
+ * structure that acts as a simplified version
+ * of UNIX. The following functions simulate files 
+ * and directories, naviagate throughout them
+ * and determine the current position in the filesystem.
+ * Any unneeded dynamically allocated memory is freed
+ */
+
+
+#include "unix.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+/* Helper function to print elements in a given directory */
+static void print_helper(Unix *filesystem);
+/* Helper function to print working directory */
+static void pwd_helper(Unix *filesystem);
+/* Helper function to remove a file or directory */
+static void rm_helper(Unix *filesystem);
+
+/* Initialize fields in the root directory */ 
+void mkfs(Unix *filesystem) {
+  char *init_name = malloc(sizeof(*init_name) + 1);
+  strcpy(init_name, "/");
+  filesystem -> name = init_name;
+  filesystem -> child = NULL;
+  filesystem -> next = NULL;
+  filesystem -> parent = NULL;
+  filesystem -> current = filesystem;
+  filesystem -> type = DIRECTORY;
+  filesystem -> root = filesystem;
+}
+
+/* Adds file to current directory in alphabetical order */
+int touch(Unix *filesystem, const char arg[]) {
+  Unix *curr, *prev, *temp,  *new_system = NULL;
+  char *new_name;
+  int result = 0;
+  
+  if (filesystem == NULL || arg == NULL) {
+    result = 0;
+    return result;
+  }
+
+  if (strchr(arg, '/') != NULL && strcmp(arg, "/") != 0) {
+    result = 0;
+    return result;
+  }
+
+  if (strcmp(arg, ".") == 0 || strcmp(arg, "..") == 0
+      ||strcmp(arg, "/") == 0) {
+    result = 1;
+    return result;
+  }
+
+  prev = NULL;
+  curr = filesystem -> current -> child;
+
+
+  /* If there is nothing in directory or argument is first thing */
+  if (curr == NULL || strcmp(curr -> name, arg) > 0) {
+    /* Create a new file system */
+    new_system = malloc(sizeof(Unix));
+    if (new_system != NULL) {
+      new_name = malloc(strlen(arg) * sizeof(char) + 1);
+      strcpy(new_name, arg);
+      new_system -> name = new_name;
+      new_system -> current = new_system;
+      new_system -> type = A_FILE;
+      new_system -> parent = filesystem -> current;
+      new_system -> root = filesystem;
+      new_system -> child = NULL;
+      /* Set it as the first thing in the directory list */
+      temp = filesystem -> current -> child;
+      filesystem -> current -> child = new_system;
+      new_system -> next = temp;
+      return 1;
+    }
+  }
+
+  /* Check to see if directory or file  with 
+   * this name already exists, don't do anything */
+  while (curr != NULL) {
+    if (strcmp(curr-> name, arg) == 0) {
+      return 1;
+    }
+    curr = curr -> next;
+  }
+  
+
+  /* Traverse filesystem until you find a file that comes after the name
+   * you want to insert */
+  curr = filesystem -> current -> child;
+  while (curr != NULL && strcmp(arg, curr -> name) > 0) {
+    prev = curr;
+    curr = curr -> next;
+  }
+  /* Create the file and insert it */
+  
+  new_system = malloc(sizeof(*filesystem));
+  if (new_system != NULL) {
+    new_name = malloc((strlen(arg) * sizeof(char)) + 1);
+    strcpy(new_name, arg);
+    new_system -> name = new_name;
+    new_system -> next = curr;
+    new_system -> current = new_system;
+    new_system -> type = A_FILE;
+    new_system -> parent = filesystem -> current;
+    new_system -> root = filesystem;
+    new_system -> child = NULL;
+    if (prev != NULL) {
+      prev -> next = new_system;
+      new_system -> next = curr;
+    }
+  }
+
+     
+  return 1;
+ 
+  
+}
+
+/* Adds file to current directory in alphabetical order */
+int mkdir(Unix *filesystem, const char arg[]) {
+  Unix *curr, *prev, *temp,  *new_system = NULL;
+  char *new_name;
+ 
+  if (filesystem == NULL || arg == NULL) {
+    return 0;
+  }
+
+  if (strchr(arg, '/') != NULL && strcmp(arg, "/") != 0) {
+    return 0;
+  }
+
+  if (strcmp(arg, ".") == 0 || strcmp(arg, "..") == 0
+      || strcmp(arg, "/") == 0 || strlen(arg) == 0) {
+    return 0;
+  }
+
+
+  prev = NULL;
+  curr = filesystem -> current -> child;
+
+  /* If there is nothing in directory or argument is first thing */
+  if (curr == NULL || strcmp(curr -> name, arg) > 0) {
+    new_system = malloc(sizeof(*filesystem));
+    /* Create a directory and insert it */
+    if (new_system != NULL){
+      new_name = malloc(strlen(arg) * sizeof(char) + 1);
+      strcpy(new_name, arg);
+      new_system -> name = new_name;
+      new_system -> current = new_system;
+      new_system -> type = DIRECTORY;
+      new_system -> parent = filesystem -> current;
+      new_system -> root = filesystem;
+      new_system -> child = NULL;
+      /* Set it as the first thing in the directory list */
+      temp = filesystem -> current -> child;
+      filesystem -> current -> child = new_system;
+      new_system -> next = temp;
+      return 1;
+    }
+  }
+
+  /* Check to see if directory or file  with 
+   * this name already exists, don't do anything */
+  while (curr != NULL) {
+    if (strcmp(curr -> name, arg) == 0) {
+      return 1;
+    }
+    curr = curr -> next;
+  }
+
+  /* Traverse filesystem until you find a file that comes after the name
+   * you want to insert */
+  curr = filesystem -> current -> child;
+  while (curr != NULL && strcmp(arg, curr -> name) > 0) {
+    prev = curr;
+    curr = curr -> next;
+  }
+
+  /* Create the directory and insert it */
+  new_system = malloc(sizeof(*filesystem));
+  if (new_system != NULL){
+    new_name = malloc(strlen(arg) * sizeof(char) + 1);
+    strcpy(new_name, arg);
+    new_system -> name = new_name;
+    new_system -> next = curr;
+    new_system -> current = new_system;
+    new_system -> type = DIRECTORY;
+    new_system -> parent = filesystem -> current;
+    new_system -> root = filesystem;
+    new_system -> child = NULL;
+
+    if (prev != NULL) {
+      prev -> next = new_system;
+      new_system -> next = curr;
+    }
+
+  }
+  return 1;
+}
+
+/* Navigates to directory given by argument name */
+int cd(Unix *filesystem, const char arg[]) {
+  Unix *curr;
+
+  if (filesystem == NULL || arg == NULL) {
+    return 0;
+  }
+  if (strchr(arg, '/') != NULL && strcmp(arg, "/") != 0) {
+    return 0;
+  }
+
+  if (strcmp(arg, ".") == 0 || strlen(filesystem -> name) == 0) {
+    return 1;
+  }
+
+  /* If current directory is not the root, navigate to the parent directory,
+   * otherwise, don't do anything */
+  if (strcmp(arg, "..") == 0) {
+    if (strcmp(filesystem -> current ->  name, "/") == 0) {
+      return 1;
+    } else {
+      filesystem -> current = filesystem -> current -> parent; 
+      return 1;
+    }
+  }
+
+  /* If argument is root directory, navigate to the root directory */
+  if (strcmp(arg, "/") == 0) {
+    filesystem -> current = filesystem -> current -> root;
+    return 1;
+  }
+
+  /* Look for the directory given by argument name, if it exists */
+  curr = filesystem  ->  current ->  child;
+  while (curr != NULL) {
+    if (strcmp(arg, curr -> name) == 0 &&
+	curr -> type == DIRECTORY) {
+      filesystem -> current = curr;
+      return 1;
+    }
+    curr = curr -> next;
+  }
+
+  /* If there was no directory with that name in the list, return 0 */
+  if (curr == NULL) { 
+    return 0;
+  }
+  return 1;
+}
+
+/* This function lists all of the elements in a given directory */
+int ls(Unix *filesystem, const char arg[]) {
+  Unix *curr, *curr2; 
+  int file_exists = 0;  /* Flag to see if file or directory exists */
+  if (filesystem == NULL || arg == NULL) {
+    return 0;
+  }
+
+  /* Based on the argument, navigate to the first element in
+   * the list and traverse the list, printing each element */
+  if ((strcmp(arg, ".") == 0 || strlen(arg) == 0)) {
+    curr = filesystem -> current -> child;
+    file_exists = 1;
+    print_helper(curr);
+  } else if (strcmp(arg, "..") == 0) {
+    file_exists = 1;
+    if (strcmp(filesystem -> name, "/") != 0) {
+      curr = filesystem -> current -> parent -> child;
+    } else {
+      curr = filesystem -> root -> child;
+    }
+    print_helper(curr);
+  } else if (strcmp(arg, "/") == 0) {
+    file_exists = 1;
+    curr = filesystem -> root ->  child;
+    print_helper(curr);
+  } else {
+    /* Check to see if the file or directory exists */
+    
+    curr = filesystem -> current -> child;
+
+    /* If it does, mark the flag */
+    while(curr != NULL) {
+      if(strcmp(curr -> name, arg) == 0){
+	file_exists = 1;
+      }
+      curr = curr -> next;
+    }
+
+    /* Reset curr */
+    curr = filesystem -> current -> child;
+
+    /* Print everything in the sub directory, or just
+     * print the file */
+    while (curr != NULL) {
+      if (strcmp(curr -> name, arg) == 0) {
+	if (curr -> type == DIRECTORY) {
+	  curr2 = curr -> current -> child;
+	  print_helper(curr2);
+	} else {
+	  printf("%s\n", curr -> name);
+	}
+      }
+      curr = curr -> next;
+    }
+  }
+
+  return file_exists;
+}
+
+/* This function prints the full path name 
+ * of the current directory */
+void pwd(Unix *filesystem) {
+  Unix *curr;
+  if(filesystem == NULL) {
+    return;
+  }
+
+  /* Navigate to the current directory */
+  curr = filesystem -> current;
+
+  if(curr == NULL) {
+    return;
+  }
+
+  pwd_helper(curr);
+  printf("\n");
+}
+
+static void pwd_helper(Unix *filesystem) {
+
+  /* If the parent is null, we are at the root directory */
+  if (filesystem -> parent == NULL) {
+    printf("/");
+    return;
+  }
+
+  /* Recur up the filesystem backwards */
+  pwd_helper(filesystem -> parent);
+  if (strcmp(filesystem -> parent -> name, "/") == 0) {
+    printf("%s", filesystem -> name);
+  } else {
+    printf("/%s",filesystem -> name);
+  }
+}
+
+/* This function removes an entire filesystem */
+void rmfs(Unix *filesystem) {
+  if (filesystem == NULL) {
+    return;
+  }
+
+  /* Recur to the deepest filesystem in the system */
+  rmfs(filesystem -> next);
+  rmfs(filesystem -> child);
+  /* Base case: if we reach the root, just free the name
+   * since the root filesystem is declared on the stack */
+  if (strcmp(filesystem -> name, "/") == 0){
+    free(filesystem -> name);
+    return;
+  }
+  /* Free everything visited */
+  free(filesystem -> name);
+  free(filesystem);
+}
+
+/* This filesystem removes a specific directory or file */
+int rm(Unix *filesystem, const char arg[]) {
+  Unix *prev, *curr;
+  if (filesystem == NULL || arg == NULL) {
+    return 0;
+  }
+
+  if (strchr(arg, '/') != NULL && strcmp(arg, "/") != 0) {
+    return 0;
+  }
+
+  if (strcmp(arg, ".") == 0 || strcmp(arg, "..") == 0
+      ||strcmp(arg, "/") == 0) {
+    return 0;
+  }
+
+  curr = filesystem -> current -> child;
+
+  /* If the argument is the first thing in the list,
+   * just free it  */
+  if (strcmp(curr -> name, arg) == 0) {
+    filesystem -> current -> child = curr -> next;
+    free(curr);
+    return 1;
+  }
+
+  /* Otherwise, if its a directory, free the directory and 
+   * everything in it using the helper. If its a file, just 
+   * free it */
+  while (curr != NULL) {
+    if (strcmp(curr -> name, arg) == 0) {
+      if (curr -> type == DIRECTORY) {
+	if(prev != NULL){
+	  prev -> next = curr -> next;
+	}
+	rm_helper(curr -> child);
+	free(curr);
+	return 1 ;
+      } else {
+	prev -> next = curr -> next;
+	free(curr -> name);
+	free(curr);
+	return 1;
+      }
+
+    }
+    prev = curr;
+    curr = curr -> next;
+  }
+
+  /* If it wasnt in the filesystem, it is an error */
+  if (curr == NULL) {
+    return 0;
+  } 
+ 
+  return 1;
+}
+
+/* This helper function deletes a given directory and everything in it */
+static void rm_helper(Unix *filesystem) {
+  rmfs(filesystem);
+}
+
+/* This helper function prints every element in the given
+ * parameter */
+static void print_helper(Unix *filesystem) {
+
+  if (filesystem == NULL) {
+    return;
+  }
+
+  while (filesystem != NULL) {
+    if (filesystem -> type == DIRECTORY) {
+      printf("%s", filesystem -> name);
+      printf("/\n");
+    } else {
+      printf("%s\n", filesystem -> name);
+    }
+    filesystem = filesystem -> next;
+  }
+
+}
